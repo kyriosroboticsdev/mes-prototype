@@ -39,17 +39,28 @@ GEMINI_URL = (
 # The instruction we send to the AI along with the photo. We ask it to reply
 # in a strict JSON format so our code can read it reliably.
 VISION_PROMPT = """You are an inventory-counting assistant for a warehouse.
-Look at the photo and list every distinct type of object you can see, with an
-approximate count of how many of each there are.
+Look at the photo and list EVERY individual physical object you can see as its
+own separate entry — one entry per object. Do NOT aggregate or give counts;
+each real object gets its own line.
 
 Rules:
 - Use simple, lowercase, singular names (e.g. "pen", "bottle", "screwdriver").
-- If items are stacked or overlapping and you cannot count exactly, give your
-  best estimate.
-- Only list physical objects, not the background or surfaces.
+- For each object include a short "location" (e.g. "top-right cluster",
+  "next to the left bottle") so you are forced to point at each real object.
+- Each physical object must be listed EXACTLY ONCE. Assign it to the single
+  best-fit category. Never list the same object under two different names.
+- If you are unsure what an object is, pick your single best guess — do NOT
+  hedge by listing it as multiple types.
+- Only list physical objects, not the background, surfaces, body parts, or
+  furniture.
 
 Respond with ONLY valid JSON in exactly this format, nothing else:
-{"items": [{"name": "pen", "count": 3}, {"name": "bottle", "count": 1}]}
+{"items": [
+  {"name": "pen", "location": "top-right cluster"},
+  {"name": "pen", "location": "top-right cluster"},
+  {"name": "screwdriver", "location": "next to the left bottle"},
+  {"name": "bottle", "location": "left of center"}
+]}
 """
 
 
@@ -96,8 +107,12 @@ def ask_gemini(image_bytes, api_key):
                 ]
             }
         ],
-        # Ask Gemini to reply as JSON so it's easy to parse.
-        "generationConfig": {"response_mime_type": "application/json"},
+        # Ask Gemini to reply as JSON so it's easy to parse. temperature 0
+        # makes it deterministic and less likely to second-guess / inflate counts.
+        "generationConfig": {
+            "response_mime_type": "application/json",
+            "temperature": 0,
+        },
     }
 
     response = requests.post(
@@ -123,10 +138,12 @@ def compare_to_inventory(detected_items, inventory):
     how many we saw, and how many to order.
     """
     # Build a quick lookup of detected counts by name (lowercased).
+    # The prompt now returns one entry per physical object, so each entry counts
+    # as 1. (We still honor an explicit "count" if one is ever present.)
     seen = {}
     for item in detected_items:
         name = str(item.get("name", "")).lower().strip()
-        count = int(item.get("count", 0))
+        count = int(item.get("count", 1))
         seen[name] = seen.get(name, 0) + count
 
     rows = []
