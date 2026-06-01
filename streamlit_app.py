@@ -19,11 +19,22 @@ fallback, the GEMINI_API_KEY environment variable. See README for setup.
 """
 
 import os
+import io
 import json
 import base64
 
 import requests
 import streamlit as st
+
+# Barcode decoding runs locally (no API call). Imported defensively so the app
+# still loads with a clear message if the pyzbar system library isn't present.
+try:
+    from PIL import Image
+    from pyzbar.pyzbar import decode as _zbar_decode
+
+    _PYZBAR_OK = True
+except Exception:
+    _PYZBAR_OK = False
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -31,7 +42,7 @@ import streamlit as st
 
 # Bump this string on each meaningful change. It's shown at the bottom of the
 # app so you can confirm at a glance which build Streamlit Cloud is running.
-BUILD_VERSION = "enumerate-prompt v2"
+BUILD_VERSION = "barcode v3"
 
 # Which Gemini model to use. "flash" models are fast and free-tier friendly.
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -175,6 +186,37 @@ def compare_to_inventory(detected_items, inventory):
     return rows
 
 
+def load_barcode_map():
+    """
+    Optional map of barcode/QR value -> item name (barcodes.json).
+    Returns {} if the file is missing. Keys starting with "_" are ignored
+    (so we can keep comments in the JSON file).
+    """
+    try:
+        with open("barcodes.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def decode_barcodes(image_bytes):
+    """
+    Find and decode every barcode / QR code in the image. Runs locally via
+    pyzbar (no API call, no cost). Returns a list of {"data", "type"}.
+    """
+    img = Image.open(io.BytesIO(image_bytes))
+    results = []
+    for d in _zbar_decode(img):
+        results.append(
+            {
+                "data": d.data.decode("utf-8", errors="replace"),
+                "type": d.type,  # e.g. "QRCODE", "EAN13", "CODE128"
+            }
+        )
+    return results
+
+
 # ---------------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------------
@@ -187,30 +229,39 @@ st.caption(
     "below its minimum stock level and generates a re-order list."
 )
 
-api_key = get_api_key()
-if not api_key:
-    st.error(
-        "No Gemini API key found. On Streamlit Cloud, add it under "
-        "**Settings → Secrets** as `GEMINI_API_KEY = \"your-key\"`. "
-        "Locally, set the `GEMINI_API_KEY` environment variable or create "
-        "`.streamlit/secrets.toml`."
-    )
-    st.stop()
+# Load the catalog + optional barcode map once.
+inventory = load_inventory()
+barcode_map = load_barcode_map()
 
 # Sidebar: show / let them inspect the tracked inventory.
-inventory = load_inventory()
 with st.sidebar:
     st.header("Tracked inventory")
     st.caption("Minimum stock levels (edit inventory.json to change these).")
     st.json(inventory)
 
-st.subheader("1. Capture a photo")
-st.caption(
-    "Tip: photograph one bin / part-type at a time — AI vision nails *identifying* "
-    "items but only *estimates* counts when they overlap."
+# Two ways to scan. Barcode mode runs locally (free, no Gemini API call); AI
+# vision mode estimates counts of un-labeled items via Gemini.
+mode = st.radio(
+    "Mode",
+    ["📦 Count items (AI vision)", "🔖 Scan barcode (local, free)"],
+    horizontal=True,
+    help="Barcode scanning runs on the server for free and does not use the Gemini API.",
 )
+count_mode = mode.startswith("📦")
 
-photo = st.camera_input("Point your camera at some items and take a picture")
+st.subheader("1. Capture a photo")
+if count_mode:
+    st.caption(
+        "Tip: photograph one bin / part-type at a time — AI vision nails "
+        "*identifying* items but only *estimates* counts when they overlap."
+    )
+else:
+    st.caption(
+        "Point at a single barcode or QR code. Fill the frame, hold steady, and "
+        "keep it well-lit for the cleanest read."
+    )
+
+photo = st.camera_input("Point your camera and take a picture")
 
 # Also allow uploading an existing image (handy for demos / desktops).
 uploaded = st.file_uploader(
@@ -220,61 +271,122 @@ uploaded = st.file_uploader(
 image_file = photo or uploaded
 
 if image_file is not None:
+    image_bytes = image_file.getvalue()
     st.subheader("2. Analyze")
-    if st.button("📸 Analyze this photo", type="primary"):
-        image_bytes = image_file.getvalue()
-        with st.spinner("Asking Gemini what it sees…"):
-            try:
-                detected = ask_gemini(image_bytes, api_key)
-            except requests.HTTPError as e:
-                st.error(f"Gemini API error: {e.response.text}")
-                st.stop()
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-                st.stop()
 
-        report = compare_to_inventory(detected, inventory)
-
-        st.subheader("3. Results")
-
-        # Re-order list first — that's the point of the tool.
-        to_order = [r for r in report if r["needs_order"]]
-        if to_order:
-            st.warning(f" {len(to_order)} item(s) below minimum — re-order needed:")
-            st.dataframe(
-                [
-                    {
-                        "Item": r["item"],
-                        "Minimum": r["minimum"],
-                        "On hand": r["on_hand"],
-                        "Order qty": r["order_qty"],
-                    }
-                    for r in to_order
-                ],
-                hide_index=True,
-                use_container_width=True,
+    # -----------------------------------------------------------------------
+    # AI vision count path (requires a Gemini key)
+    # -----------------------------------------------------------------------
+    if count_mode:
+        api_key = get_api_key()
+        if not api_key:
+            st.error(
+                "No Gemini API key found. On Streamlit Cloud, add it under "
+                "**Settings → Secrets** as `GEMINI_API_KEY = \"your-key\"`. "
+                "Locally, set the `GEMINI_API_KEY` environment variable or create "
+                "`.streamlit/secrets.toml`. (Barcode mode works without a key.)"
             )
-        else:
-            st.success("Everything is at or above its minimum stock level.")
+            st.stop()
 
-        with st.expander("Full stock report (all tracked items)"):
-            st.dataframe(
-                [
-                    {
-                        "Item": r["item"],
-                        "Minimum": r["minimum"],
-                        "On hand": r["on_hand"],
-                        "Order qty": r["order_qty"],
-                        "Needs order": r["needs_order"],
-                    }
-                    for r in report
-                ],
-                hide_index=True,
-                use_container_width=True,
+        if st.button("📸 Analyze this photo", type="primary"):
+            with st.spinner("Asking Gemini what it sees…"):
+                try:
+                    detected = ask_gemini(image_bytes, api_key)
+                except requests.HTTPError as e:
+                    st.error(f"Gemini API error: {e.response.text}")
+                    st.stop()
+                except Exception as e:
+                    st.error(f"Something went wrong: {e}")
+                    st.stop()
+
+            report = compare_to_inventory(detected, inventory)
+
+            st.subheader("3. Results")
+
+            # Re-order list first — that's the point of the tool.
+            to_order = [r for r in report if r["needs_order"]]
+            if to_order:
+                st.warning(f"{len(to_order)} item(s) below minimum — re-order needed:")
+                st.dataframe(
+                    [
+                        {
+                            "Item": r["item"],
+                            "Minimum": r["minimum"],
+                            "On hand": r["on_hand"],
+                            "Order qty": r["order_qty"],
+                        }
+                        for r in to_order
+                    ],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.success("Everything is at or above its minimum stock level.")
+
+            with st.expander("Full stock report (all tracked items)"):
+                st.dataframe(
+                    [
+                        {
+                            "Item": r["item"],
+                            "Minimum": r["minimum"],
+                            "On hand": r["on_hand"],
+                            "Order qty": r["order_qty"],
+                            "Needs order": r["needs_order"],
+                        }
+                        for r in report
+                    ],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+            with st.expander("Raw items Gemini detected"):
+                st.json(detected)
+
+    # -----------------------------------------------------------------------
+    # Barcode scan path (local, free — no API call)
+    # -----------------------------------------------------------------------
+    else:
+        if not _PYZBAR_OK:
+            st.error(
+                "Barcode library not available. Install it with "
+                "`pip install pyzbar Pillow`. On Streamlit Cloud, the `packages.txt` "
+                "file installs the required `libzbar0` system library automatically."
             )
+            st.stop()
 
-        with st.expander("Raw items Gemini detected"):
-            st.json(detected)
+        if st.button("🔖 Scan for barcodes", type="primary"):
+            codes = decode_barcodes(image_bytes)
+
+            st.subheader("3. Results")
+            if not codes:
+                st.warning(
+                    "No barcode or QR code found. Try a closer, sharper, well-lit "
+                    "shot with the code filling more of the frame."
+                )
+            else:
+                st.success(f"Found {len(codes)} code(s).")
+                rows = []
+                for c in codes:
+                    item = barcode_map.get(c["data"])
+                    rows.append(
+                        {
+                            "Barcode": c["data"],
+                            "Type": c["type"],
+                            "Matched item": item or "— not in catalog —",
+                            "Min stock": inventory.get(item, "—") if item else "—",
+                        }
+                    )
+                st.dataframe(rows, hide_index=True, use_container_width=True)
+
+                unknown = [c["data"] for c in codes if c["data"] not in barcode_map]
+                if unknown:
+                    st.info(
+                        "Tip: codes shown as “not in catalog” can be linked to an "
+                        "item by adding them to `barcodes.json`."
+                    )
+
+                with st.expander("Raw decoded codes"):
+                    st.json(codes)
 
 # Build stamp — lets you verify which version Streamlit Cloud is serving.
 st.divider()

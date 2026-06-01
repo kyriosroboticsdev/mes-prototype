@@ -1,0 +1,5 @@
+{
+  "_comment": "Map a scanned barcode/QR value (exactly as decoded) to an item name that exists in inventory.json. Add your real codes here, or print QR codes that encode these strings. Entries starting with _ are ignored.",
+  "012345678905": "bottle",
+  "036000291452": "pen"
+}
