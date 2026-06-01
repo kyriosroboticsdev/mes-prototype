@@ -177,7 +177,7 @@ def compare_to_inventory(detected_items, inventory):
 
 st.set_page_config(page_title="Smart Inventory Scanner — MES Prototype", page_icon="📦")
 
-st.title("📦 Smart Inventory Scanner")
+st.title("Smart Inventory Scanner")
 st.caption(
     "Take a photo of a shelf → AI identifies the items → the app flags anything "
     "below its minimum stock level and generates a re-order list."
@@ -236,7 +236,7 @@ if image_file is not None:
         # Re-order list first — that's the point of the tool.
         to_order = [r for r in report if r["needs_order"]]
         if to_order:
-            st.warning(f"⚠️ {len(to_order)} item(s) below minimum — re-order needed:")
+            st.warning(f" {len(to_order)} item(s) below minimum — re-order needed:")
             st.dataframe(
                 [
                     {
@@ -251,7 +251,7 @@ if image_file is not None:
                 use_container_width=True,
             )
         else:
-            st.success("✅ Everything is at or above its minimum stock level.")
+            st.success("Everything is at or above its minimum stock level.")
 
         with st.expander("Full stock report (all tracked items)"):
             st.dataframe(
