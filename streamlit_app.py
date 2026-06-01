@@ -29,6 +29,10 @@ import streamlit as st
 # Configuration
 # ---------------------------------------------------------------------------
 
+# Bump this string on each meaningful change. It's shown at the bottom of the
+# app so you can confirm at a glance which build Streamlit Cloud is running.
+BUILD_VERSION = "enumerate-prompt v2"
+
 # Which Gemini model to use. "flash" models are fast and free-tier friendly.
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_URL = (
@@ -271,3 +275,7 @@ if image_file is not None:
 
         with st.expander("Raw items Gemini detected"):
             st.json(detected)
+
+# Build stamp — lets you verify which version Streamlit Cloud is serving.
+st.divider()
+st.caption(f"Build: {BUILD_VERSION}")
