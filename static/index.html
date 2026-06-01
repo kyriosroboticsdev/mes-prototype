@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Inventory Scanner — MES Prototype</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>📦 Smart Inventory Scanner</h1>
+    <p class="subtitle">Take a photo of a shelf — automatically detect stock and flag re-orders.</p>
+  </header>
+
+  <main>
+    <!-- Camera view -->
+    <section class="card">
+      <video id="camera" autoplay playsinline></video>
+      <div class="button-row">
+        <button id="captureBtn">📸 Capture &amp; Analyze</button>
+        <button id="switchBtn" class="secondary">🔄 Switch Camera</button>
+      </div>
+      <!-- Hidden canvas used to grab a still frame from the video -->
+      <canvas id="canvas" hidden></canvas>
+    </section>
+
+    <!-- Status / loading message -->
+    <p id="status" class="status"></p>
+
+    <!-- Snapshot preview -->
+    <section id="previewCard" class="card" hidden>
+      <h2>Captured Photo</h2>
+      <img id="preview" alt="captured frame" />
+    </section>
+
+    <!-- Order report -->
+    <section id="reportCard" class="card" hidden>
+      <h2>Inventory Report</h2>
+      <table id="reportTable">
+        <thead>
+          <tr><th>Item</th><th>Need (min)</th><th>On hand</th><th>Order</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="orderSummary"></div>
+    </section>
+
+    <!-- Raw detection list (what the AI saw) -->
+    <section id="detectedCard" class="card" hidden>
+      <h2>What the camera detected</h2>
+      <ul id="detectedList"></ul>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

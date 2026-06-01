@@ -1,0 +1,88 @@
+/* Simple, clean styling. Nothing fancy — easy to read and tweak. */
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  margin: 0;
+  background: #f4f6f9;
+  color: #1f2933;
+}
+
+header {
+  background: #1f6feb;
+  color: white;
+  padding: 20px 16px;
+  text-align: center;
+}
+
+header h1 { margin: 0 0 4px; font-size: 1.5rem; }
+.subtitle { margin: 0; opacity: 0.9; font-size: 0.95rem; }
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+video, #preview {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+button {
+  flex: 1;
+  padding: 12px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #1f6feb;
+  color: white;
+  cursor: pointer;
+}
+button.secondary { background: #6b7280; flex: 0 0 auto; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.status {
+  text-align: center;
+  font-weight: 600;
+  min-height: 1.2em;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+tr.order-needed { background: #fff1f0; }
+tr.order-needed td { color: #b91c1c; font-weight: 600; }
+
+#orderSummary {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.all-good { background: #ecfdf5; color: #065f46; }
+.needs-order { background: #fef2f2; color: #b91c1c; }
+
+ul { padding-left: 20px; }
