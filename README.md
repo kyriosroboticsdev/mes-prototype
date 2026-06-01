@@ -1,4 +1,4 @@
-# 📦 Smart Inventory Scanner — MES Prototype
+#Smart Inventory Scanner — MES Prototype
 
 Take a photo of a shelf → an AI identifies the items → the app flags anything
 below its minimum stock level and generates a re-order list.
