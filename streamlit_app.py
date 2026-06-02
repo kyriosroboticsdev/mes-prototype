@@ -27,14 +27,32 @@ import requests
 import streamlit as st
 
 # Barcode decoding runs locally (no API call). Imported defensively so the app
-# still loads with a clear message if the pyzbar system library isn't present.
+# still loads with a clear message if a library is missing. We use two engines
+# and merge their results — zxing-cpp is more robust on curved/low-quality
+# codes, pyzbar catches some that zxing misses.
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
+
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
+
+try:
     from pyzbar.pyzbar import decode as _zbar_decode
 
     _PYZBAR_OK = True
 except Exception:
     _PYZBAR_OK = False
+
+try:
+    import zxingcpp
+
+    _ZXING_OK = True
+except Exception:
+    _ZXING_OK = False
+
+# Barcode mode is usable as long as we can open images and have at least one engine.
+_BARCODE_OK = _PIL_OK and (_PYZBAR_OK or _ZXING_OK)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -42,7 +60,7 @@ except Exception:
 
 # Bump this string on each meaningful change. It's shown at the bottom of the
 # app so you can confirm at a glance which build Streamlit Cloud is running.
-BUILD_VERSION = "barcode v3"
+BUILD_VERSION = "barcode v4 (zxing+pyzbar)"
 
 # Which Gemini model to use. "flash" models are fast and free-tier friendly.
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -202,19 +220,37 @@ def load_barcode_map():
 
 def decode_barcodes(image_bytes):
     """
-    Find and decode every barcode / QR code in the image. Runs locally via
-    pyzbar (no API call, no cost). Returns a list of {"data", "type"}.
+    Find and decode every barcode / QR code in the image. Runs locally (no API
+    call, no cost). Returns a list of {"data", "type"}.
+
+    To handle real-world phone shots, we convert to grayscale, upscale small
+    images (so thin bars span enough pixels), and run both decoder engines over
+    a few preprocessed variants, merging unique results.
     """
-    img = Image.open(io.BytesIO(image_bytes))
-    results = []
-    for d in _zbar_decode(img):
-        results.append(
-            {
-                "data": d.data.decode("utf-8", errors="replace"),
-                "type": d.type,  # e.g. "QRCODE", "EAN13", "CODE128"
-            }
+    img = Image.open(io.BytesIO(image_bytes)).convert("L")
+
+    # Build candidate images: upscale if the photo is small, plus a contrast-
+    # boosted version. Bigger + higher-contrast helps the decoders lock on.
+    scales = [1] if max(img.size) >= 1600 else [2, 3]
+    candidates = []
+    for s in scales:
+        im = img if s == 1 else img.resize(
+            (img.width * s, img.height * s), Image.LANCZOS
         )
-    return results
+        candidates.append(im)
+        candidates.append(ImageOps.autocontrast(im))
+
+    found = {}  # data -> type, dedupes across engines / scales
+    for im in candidates:
+        if _ZXING_OK:
+            for r in zxingcpp.read_barcodes(im):
+                if r.text:
+                    found.setdefault(r.text, str(r.format).split(".")[-1])
+        if _PYZBAR_OK:
+            for d in _zbar_decode(im):
+                found.setdefault(d.data.decode("utf-8", errors="replace"), d.type)
+
+    return [{"data": k, "type": v} for k, v in found.items()]
 
 
 # ---------------------------------------------------------------------------
@@ -257,8 +293,9 @@ if count_mode:
     )
 else:
     st.caption(
-        "Point at a single barcode or QR code. Fill the frame, hold steady, and "
-        "keep it well-lit for the cleanest read."
+        "Fill the frame with the barcode (get close!), hold steady, keep it "
+        "well-lit, and flatten curved labels if you can. Low-res or blurry shots "
+        "where the bars blur together usually can't be decoded by any scanner."
     )
 
 photo = st.camera_input("Point your camera and take a picture")
@@ -346,11 +383,12 @@ if image_file is not None:
     # Barcode scan path (local, free — no API call)
     # -----------------------------------------------------------------------
     else:
-        if not _PYZBAR_OK:
+        if not _BARCODE_OK:
             st.error(
                 "Barcode library not available. Install it with "
-                "`pip install pyzbar Pillow`. On Streamlit Cloud, the `packages.txt` "
-                "file installs the required `libzbar0` system library automatically."
+                "`pip install zxing-cpp pyzbar Pillow`. On Streamlit Cloud, the "
+                "`packages.txt` file installs the `libzbar0` system library "
+                "automatically."
             )
             st.stop()
 

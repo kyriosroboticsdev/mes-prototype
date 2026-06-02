@@ -2,4 +2,5 @@ flask
 requests
 streamlit
 pyzbar
+zxing-cpp
 Pillow
