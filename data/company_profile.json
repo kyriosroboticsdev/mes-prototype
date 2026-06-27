@@ -1,0 +1,8 @@
+{
+  "_comment": "SIMULATED company side. Real apps would pull this from an ERP. on_hand = current stock, weekly_use = consumption rate, lead_time_weeks = how long an order takes to arrive, safety_stock = buffer, order_cost = fixed cost per order, holding_cost_per_unit_yr = cost to hold one unit a year, base_price = a sensible price used only for the offline sample feed.",
+  "copper":   {"on_hand": 1200, "weekly_use": 150, "lead_time_weeks": 4, "safety_stock": 300, "order_cost": 500, "holding_cost_per_unit_yr": 1.2, "base_price": 4.20},
+  "aluminum": {"on_hand": 800,  "weekly_use": 120, "lead_time_weeks": 3, "safety_stock": 250, "order_cost": 400, "holding_cost_per_unit_yr": 0.9, "base_price": 1.15},
+  "pen":      {"on_hand": 9,    "weekly_use": 4,   "lead_time_weeks": 1, "safety_stock": 3,   "order_cost": 10,  "holding_cost_per_unit_yr": 0.1, "base_price": 1.00},
+  "bottle":   {"on_hand": 5,    "weekly_use": 2,   "lead_time_weeks": 1, "safety_stock": 2,   "order_cost": 10,  "holding_cost_per_unit_yr": 0.1, "base_price": 1.00},
+  "battery":  {"on_hand": 12,   "weekly_use": 6,   "lead_time_weeks": 2, "safety_stock": 4,   "order_cost": 15,  "holding_cost_per_unit_yr": 0.2, "base_price": 1.00}
+}

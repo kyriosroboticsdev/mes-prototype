@@ -1,0 +1,8 @@
+{
+  "_comment": "Catalog of tracked materials. 'ticker' is a free yfinance symbol for market data; null means an internal item with no market feed (counted from inventory only). Keys starting with _ are ignored.",
+  "copper":   {"unit": "lb",    "ticker": "HG=F",  "kind": "commodity", "label": "Copper (COMEX)"},
+  "aluminum": {"unit": "lb",    "ticker": "ALI=F", "kind": "commodity", "label": "Aluminum (COMEX)"},
+  "pen":      {"unit": "units", "ticker": null,    "kind": "internal",  "label": "Pen"},
+  "bottle":   {"unit": "units", "ticker": null,    "kind": "internal",  "label": "Bottle"},
+  "battery":  {"unit": "units", "ticker": null,    "kind": "internal",  "label": "Battery"}
+}

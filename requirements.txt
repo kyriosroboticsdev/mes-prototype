@@ -4,3 +4,8 @@ streamlit
 pyzbar
 zxing-cpp
 Pillow
+# Procurement advisor (second page)
+yfinance
+pandas
+numpy
+statsmodels

@@ -1,0 +1,5 @@
+{
+  "_comment": "Bill of materials: how much of each raw material one unit of a product needs. Used to answer 'do I have enough to build N of these?'. 'cordless drill' uses real commodities; 'starter kit' uses household items so the logic can be demoed live with the scanner.",
+  "cordless drill": {"copper": 0.2, "aluminum": 0.4},
+  "starter kit":    {"pen": 2, "bottle": 1, "battery": 3}
+}
