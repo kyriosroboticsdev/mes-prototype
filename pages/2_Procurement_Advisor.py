@@ -57,74 +57,76 @@ st.caption(
     "should you buy now or wait, and how much?"
 )
 st.info(
-    "**Company inventory below is simulated** (a stand-in for an ERP feed). "
+    "**Company inventory is simulated** (a stand-in for an ERP feed). "
     "Market prices are **real**, pulled free from Yahoo Finance.",
     icon="ℹ️",
 )
 
-# ---------------------------------------------------------------------------
-# Section 1 — Can I build this product? (BOM check, works on any material)
-# ---------------------------------------------------------------------------
-st.header("1. Can I build it?")
-st.caption("Cross-references a product's bill of materials against stock on hand.")
-
-product = st.selectbox("Product", list(products.keys()))
-bom = products[product]
 on_hand = {m: profiles[m]["on_hand"] for m in profiles}
-
-units, bottleneck = buildable_units(bom, on_hand)
-c1, c2 = st.columns([1, 2])
-with c1:
-    st.metric("Max buildable now", f"{units} units")
-with c2:
-    rows = []
-    for mat, per in bom.items():
-        have = on_hand.get(mat, 0)
-        rows.append({
-            "Material": materials.get(mat, {}).get("label", mat),
-            "Need / unit": per,
-            "On hand": have,
-            "Enough for": int(have // per) if per else "—",
-            "Bottleneck": "⛔" if mat == bottleneck else "",
-        })
-    st.dataframe(rows, hide_index=True, use_container_width=True)
-st.caption(f"Limiting material: **{bottleneck}** — that's what to watch.")
-
-# ---------------------------------------------------------------------------
-# Section 2 — Material picker + inventory health
-# ---------------------------------------------------------------------------
-st.header("2. Material health & buy timing")
-
 mat_names = list(profiles.keys())
-material = st.selectbox(
-    "Material",
-    mat_names,
-    format_func=lambda m: materials.get(m, {}).get("label", m),
-)
-profile = profiles[material]
-meta = materials.get(material, {})
-health = material_health(material, profile)
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("On hand", f"{profile['on_hand']:,} {meta.get('unit','')}")
-m2.metric("Weeks of cover", f"{health['weeks_of_cover']:.1f}")
-m3.metric("Reorder point", f"{health['reorder_point']:,.0f}")
-m4.metric("Suggested order (EOQ)", f"{health['eoq']:,.0f}")
+# ===========================================================================
+# Top row — build check (1) and material health (2) side by side
+# ===========================================================================
+top_left, top_right = st.columns(2, gap="large")
 
-if health["runs_out_before_restock"]:
-    st.error(
-        f"⚠️ Only {health['weeks_of_cover']:.1f} weeks of cover but orders take "
-        f"{profile['lead_time_weeks']} weeks — you run out before restock. Buy now.",
-        icon="⏰",
-    )
-elif health["below_reorder"]:
-    st.warning("Below the reorder point — an order is due.", icon="📦")
-else:
-    st.success("Stock is comfortable for now.", icon="✅")
+# ---- 1. Can I build this product? (BOM check, works on any material) ------
+with top_left:
+    with st.container(border=True):
+        st.subheader("1. Can I build it?")
+        st.caption("A product's bill of materials vs the stock on hand.")
+        product = st.selectbox("Product", list(products.keys()))
+        bom = products[product]
+        units, bottleneck = buildable_units(bom, on_hand)
 
-# ---------------------------------------------------------------------------
-# Section 3 — Market price + forecast + recommendation (commodities only)
-# ---------------------------------------------------------------------------
+        st.metric("Max buildable now", f"{units} units")
+        rows = []
+        for mat, per in bom.items():
+            have = on_hand.get(mat, 0)
+            rows.append({
+                "Material": materials.get(mat, {}).get("label", mat),
+                "Need / unit": per,
+                "On hand": have,
+                "Enough for": int(have // per) if per else "—",
+                "Bottleneck": "⛔" if mat == bottleneck else "",
+            })
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+        st.caption(f"Limiting material: **{bottleneck}** — that's what to watch.")
+
+# ---- 2. Material picker + inventory health --------------------------------
+with top_right:
+    with st.container(border=True):
+        st.subheader("2. Material health & buy timing")
+        material = st.selectbox(
+            "Material",
+            mat_names,
+            format_func=lambda m: materials.get(m, {}).get("label", m),
+        )
+        profile = profiles[material]
+        meta = materials.get(material, {})
+        health = material_health(material, profile)
+
+        m1, m2 = st.columns(2)
+        m1.metric("On hand", f"{profile['on_hand']:,} {meta.get('unit','')}")
+        m2.metric("Weeks of cover", f"{health['weeks_of_cover']:.1f}")
+        m3, m4 = st.columns(2)
+        m3.metric("Reorder point", f"{health['reorder_point']:,.0f}")
+        m4.metric("Suggested order (EOQ)", f"{health['eoq']:,.0f}")
+
+        if health["runs_out_before_restock"]:
+            st.error(
+                f"⚠️ Only {health['weeks_of_cover']:.1f} weeks of cover but orders take "
+                f"{profile['lead_time_weeks']} weeks — you run out before restock. Buy now.",
+                icon="⏰",
+            )
+        elif health["below_reorder"]:
+            st.warning("Below the reorder point — an order is due.", icon="📦")
+        else:
+            st.success("Stock is comfortable for now.", icon="✅")
+
+# ===========================================================================
+# Market price + forecast + recommendation + backtest (commodities only)
+# ===========================================================================
 ticker = meta.get("ticker")
 if not ticker:
     st.info(
@@ -134,68 +136,78 @@ if not ticker:
         icon="🏷️",
     )
 else:
-    horizon = st.slider("Forecast horizon (weeks)", 4, 24, 12)
-    prices, source = load_prices(ticker, profile.get("base_price", 4.0))
-    fc = forecast_prices(prices, horizon=horizon)
-    current_price = float(prices.iloc[-1])
+    chart_col, rec_col = st.columns([2, 1], gap="large")
 
-    badge = "🟢 live data" if source.startswith("live") else "🟡 " + source
-    st.subheader(f"Price & forecast — {meta.get('label', material)}  ·  {badge}")
+    # ---- Price history + forecast chart (left, wider) ---------------------
+    with chart_col:
+        with st.container(border=True):
+            prices, source = load_prices(ticker, profile.get("base_price", 4.0))
+            badge = "🟢 live data" if source.startswith("live") else "🟡 " + source
+            st.subheader(f"Price & forecast — {meta.get('label', material)}")
+            st.caption(f"Source: {badge}")
+            horizon = st.slider("Forecast horizon (weeks)", 4, 24, 12)
+            fc = forecast_prices(prices, horizon=horizon)
+            current_price = float(prices.iloc[-1])
 
-    # Build a layered chart: history line + forecast line + confidence band.
-    hist_df = prices.reset_index()
-    hist_df.columns = ["date", "price"]
-    fc_df = fc.reset_index()
-    fc_df.columns = ["date", "mean", "lower", "upper"]
+            hist_df = prices.reset_index()
+            hist_df.columns = ["date", "price"]
+            fc_df = fc.reset_index()
+            fc_df.columns = ["date", "mean", "lower", "upper"]
 
-    hist = alt.Chart(hist_df).mark_line(color="#4c78a8").encode(
-        x=alt.X("date:T", title=None), y=alt.Y("price:Q", title=f"{meta.get('unit','')} price", scale=alt.Scale(zero=False))
-    )
-    band = alt.Chart(fc_df).mark_area(opacity=0.2, color="#f58518").encode(
-        x="date:T", y="lower:Q", y2="upper:Q"
-    )
-    fline = alt.Chart(fc_df).mark_line(color="#f58518", strokeDash=[5, 4]).encode(
-        x="date:T", y="mean:Q"
-    )
-    st.altair_chart((band + hist + fline).properties(height=320), use_container_width=True)
-    st.caption(
-        "Solid = history. Dashed = forecast (Holt damped-trend). Shaded ≈ 80% "
-        "band — commodity prices are hard to call, so we show uncertainty, not a "
-        "single number."
-    )
+            hist = alt.Chart(hist_df).mark_line(color="#4c78a8").encode(
+                x=alt.X("date:T", title=None),
+                y=alt.Y("price:Q", title=f"{meta.get('unit','')} price", scale=alt.Scale(zero=False)),
+            )
+            band = alt.Chart(fc_df).mark_area(opacity=0.2, color="#f58518").encode(
+                x="date:T", y="lower:Q", y2="upper:Q"
+            )
+            fline = alt.Chart(fc_df).mark_line(color="#f58518", strokeDash=[5, 4]).encode(
+                x="date:T", y="mean:Q"
+            )
+            st.altair_chart((band + hist + fline).properties(height=300), use_container_width=True)
+            st.caption(
+                "Solid = history. Dashed = forecast (Holt damped-trend). Shaded ≈ 80% "
+                "band — we show uncertainty, not a single number."
+            )
 
-    # ---- Recommendation -------------------------------------------------
-    rec = recommend(health, fc, current_price)
-    st.subheader("3. Recommendation")
-    color = {"BUY": "🟢", "WAI": "🟡", "HOL": "⚪", "ORD": "🟢"}.get(rec["action"][:3], "🟢")
-    st.markdown(f"### {color} {rec['action']}")
-    if rec["order_qty"] > 0:
-        st.markdown(f"**Suggested quantity: {rec['order_qty']:,} {meta.get('unit','')}**")
-    for r in rec["reasons"]:
-        st.markdown(f"- {r}")
+    # ---- Recommendation (right, narrower) --------------------------------
+    with rec_col:
+        with st.container(border=True):
+            rec = recommend(health, fc, current_price)
+            st.subheader("3. Recommendation")
+            color = {"BUY": "🟢", "WAI": "🟡", "HOL": "⚪", "ORD": "🟢"}.get(rec["action"][:3], "🟢")
+            st.markdown(f"### {color} {rec['action']}")
+            if rec["order_qty"] > 0:
+                st.markdown(f"**Suggested quantity: {rec['order_qty']:,} {meta.get('unit','')}**")
+            for r in rec["reasons"]:
+                st.markdown(f"- {r}")
 
-    # ---- Backtest -------------------------------------------------------
-    st.subheader("4. Would this have saved money? (backtest)")
-    st.caption(
-        "Replays the policy week-by-week over real history (no peeking at future "
-        "prices) vs a naive fixed-size policy. Leftover stock is valued at the "
-        "final price so the comparison is fair."
-    )
-    bt = run_backtest(prices, profile)
-    b1, b2, b3 = st.columns(3)
-    b1.metric("Naive net cost", f"${bt['naive']['net_cost']:,.0f}")
-    b2.metric("Price-aware net cost", f"${bt['smart']['net_cost']:,.0f}")
-    b3.metric("Saved", f"${bt['saved']:,.0f}", f"{bt['saved_pct']:+.1f}%")
-    st.line_chart(bt["cum_cost"])
-    sub = (
-        f"Over {bt['weeks']} weeks of history. Stockouts — "
-        f"naive: {bt['naive']['stockouts']}, price-aware: {bt['smart']['stockouts']} "
-        "(want both at 0: savings shouldn't come from running out)."
-    )
-    if bt["saved"] > 0 and bt["smart"]["stockouts"] == 0:
-        st.success("✅ " + sub)
-    else:
-        st.info(sub)
+    # ---- Backtest (full width) -------------------------------------------
+    with st.container(border=True):
+        st.subheader("4. Would this have saved money? (backtest)")
+        st.caption(
+            "Replays the policy week-by-week over real history (no peeking at future "
+            "prices) vs a naive fixed-size policy. Leftover stock is valued at the "
+            "final price so the comparison is fair."
+        )
+        bt = run_backtest(prices, profile)
+        bcol, chartcol = st.columns([1, 2], gap="large")
+        with bcol:
+            bt1, bt2 = st.columns(2)
+            bt1.metric("Naive net cost", f"${bt['naive']['net_cost']:,.0f}")
+            bt2.metric("Price-aware net cost", f"${bt['smart']['net_cost']:,.0f}")
+            st.metric("Saved", f"${bt['saved']:,.0f}", f"{bt['saved_pct']:+.1f}%")
+        with chartcol:
+            st.line_chart(bt["cum_cost"], height=240)
+        sub = (
+            f"Over {bt['weeks']} weeks of history. Stockouts — "
+            f"naive: {bt['naive']['stockouts']}, price-aware: {bt['smart']['stockouts']} "
+            "(want both at 0: savings shouldn't come from running out)."
+        )
+        if bt["saved"] > 0 and bt["smart"]["stockouts"] == 0:
+            st.success("✅ " + sub)
+        else:
+            st.info(sub)
 
 st.divider()
 st.caption("Prototype — simulated company data, real market prices. See DESIGN.md.")
