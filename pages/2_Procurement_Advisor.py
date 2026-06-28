@@ -41,7 +41,11 @@ def load_prices(ticker, base_price):
 # ---------------------------------------------------------------------------
 # Setup
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="Procurement Advisor — MES Prototype", page_icon="📈")
+st.set_page_config(
+    page_title="Procurement Advisor — MES Prototype",
+    page_icon="📈",
+    layout="wide",  # use the full screen width instead of the narrow centered column
+)
 
 materials = _load("materials.json")
 profiles = _load("company_profile.json")
